@@ -2,7 +2,7 @@
 A Twitter Clone - built using Python, Flask, and PostgreSQL
 
 ## Live Demo
-- <a href="https:https://warbler-r22-loni.herokuapp.com/">Warbler</a>
+- Here is a live demo of the <a href="https://warbler-r22-loni.herokuapp.com/">Warbler</a> app.
 
 ## Setup
 1. Clone or fork this repository
