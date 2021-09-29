@@ -23,9 +23,9 @@ app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ECHO'] = True
-#app.config['DEBUG_TB_INTERCEPT_REDIRECTS'] = True
+app.config['DEBUG_TB_INTERCEPT_REDIRECTS'] = False
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', "it's a secret")
-#toolbar = DebugToolbarExtension(app)
+toolbar = DebugToolbarExtension(app)
 
 connect_db(app)
 
@@ -33,7 +33,10 @@ connect_db(app)
 ##############################################################################
 # User signup/login/logout
 
-
+@app.before_request
+def create_csrf_only_form():
+    g.csrf_form = OnlyCsrfForm()
+    
 @app.before_request
 def add_user_to_g():
     """If we're logged in, add curr user to Flask global."""
@@ -114,17 +117,21 @@ def login():
     return render_template('users/login.html', form=form)
 
 
-# Reminder: logout should be POST request
-@app.route('/logout')
+@app.route('/logout', methods=['POST'])
 def logout():
     """Handle logout of user."""
 
-    # call helper function from @app.before_request
-    do_logout()
-    flash("You've been logged out. Have a great day!")
-    
-    return redirect("/login")
+    if not g.user:
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
 
+    if g.csrf_form.validate_on_submit():
+        do_logout()
+        flash("You've been logged out. Have a great day!", "success")
+        return redirect("/login")
+
+    flash('No logged in user', "danger")
+    return redirect('/login')
 
 ##############################################################################
 # General user routes:
@@ -135,8 +142,7 @@ def list_users():
 
     Can take a 'q' param in querystring to search by that username.
     """
-
-    search = request.args.get_or_404('q')
+    search = request.args.get('q')
 
     if not search:
         users = User.query.all()
@@ -187,11 +193,15 @@ def add_follow(follow_id):
         flash("Access unauthorized.", "danger")
         return redirect("/")
 
-    followed_user = User.query.get_or_404(follow_id)
-    g.user.following.append(followed_user)
-    db.session.commit()
+    if g.csrf_form.validate_on_submit():
+        followed_user = User.query.get_or_404(follow_id)
+        g.user.following.append(followed_user)
+        db.session.commit()
 
-    return redirect(url_for('show_following'))
+        return redirect(url_for('show_following'))
+
+    flash('Unauthorized form submitted', "danger")
+    return redirect('/logout')
 
 
 @app.route('/users/stop-following/<int:follow_id>', methods=['POST'])
@@ -202,11 +212,16 @@ def stop_following(follow_id):
         flash("Access unauthorized.", "danger")
         return redirect("/")
 
-    followed_user = User.query.get_or_404(follow_id)
-    g.user.following.remove(followed_user)
-    db.session.commit()
+    if g.csrf_form.validate_on_submit():
+        followed_user = User.query.get_or_404(follow_id)
+        g.user.following.remove(followed_user)
+        db.session.commit()
 
-    return redirect(url_for('show_following'))
+        return redirect(url_for('show_following'))
+    
+    flash('Unauthorized form submitted', "danger")
+    return redirect('/logout')
+
 
 @app.route('/users/profile', methods=["GET", "POST"])
 def profile():
@@ -314,19 +329,21 @@ def user_like(message_id):
 @app.route('/users/delete', methods=["POST"])
 def delete_user():
     """Delete user."""
-
-    # add csrf
     
     if not g.user:
         flash("Access unauthorized.", "danger")
         return redirect("/")
 
-    do_logout()
+    if g.csrf_form.validate_on_submit():
+        do_logout()
 
-    db.session.delete(g.user)
-    db.session.commit()
+        db.session.delete(g.user)
+        db.session.commit()
+        
+        flash("Profile successfully deleted", "success")
+        return redirect("/signup")
 
-    return redirect("/signup")
+    return redirect("/")
 
 
 ##############################################################################
@@ -367,14 +384,12 @@ def messages_show(message_id):
 @app.route('/messages/<int:message_id>/togglelike', methods=["POST"])
 def messages_toggle_like(message_id):
     """Handles liking or unliking a message."""
-
-    form = OnlyCsrfForm()
     
     if not g.user:  
         flash("Access unauthorized.", "danger")
         return redirect("/")
 
-    if form.validate_on_submit:
+    if g.csrf_form.validate_on_submit():
         msg = Message.query.get_or_404(message_id)
         
         if msg.user_id != g.user.id:
@@ -400,17 +415,24 @@ def messages_toggle_like(message_id):
 @app.route('/messages/<int:message_id>/delete', methods=["GET", "POST"])
 def messages_destroy(message_id):
     """Delete a message."""
+    
+    if not g.user:
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
 
     if not g.user and request.method == 'GET':
         flash("Access unauthorized.", "danger")
         return redirect("/")
+    
+    if g.csrf_form.validate_on_submit():
+        msg = Message.query.get_or_404(message_id)
+        db.session.delete(msg)
+        db.session.commit()
 
-    msg = Message.query.get_or_404(message_id)
-    db.session.delete(msg)
-    db.session.commit()
+        return redirect(url_for('users_show'))
 
-    return redirect(url_for('users_show'))
-
+    flash('Unauthorized form submitted', "danger")
+    return redirect('/logout')
 
 ##############################################################################
 # Homepage and error pages

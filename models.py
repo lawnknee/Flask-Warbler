@@ -9,6 +9,16 @@ bcrypt = Bcrypt()
 db = SQLAlchemy()
 
 
+def connect_db(app):
+    """Connect this database to provided Flask app.
+
+    You should call this in your Flask app.
+    """
+
+    db.app = app
+    db.init_app(app)
+
+
 class Follows(db.Model):
     """Connection of a follower <-> followed_user."""
 
@@ -61,6 +71,7 @@ class User(db.Model):
 
     bio = db.Column(
         db.Text,
+        default=""
     )
 
     location = db.Column(
@@ -72,9 +83,13 @@ class User(db.Model):
         nullable=False,
     )
 
-    messages = db.relationship('Message', order_by='Message.timestamp.desc()')
+    messages = db.relationship('Message', 
+        order_by='Message.timestamp.desc()')
     
-    likes = db.relationship('Message', secondary='likes', backref='users')
+    likes = db.relationship('Message', 
+        secondary='likes', 
+        backref='users',
+        order_by='desc(Message.timestamp)')
 
     followers = db.relationship(
         "User",
@@ -89,7 +104,6 @@ class User(db.Model):
         primaryjoin=(Follows.user_following_id == id),
         secondaryjoin=(Follows.user_being_followed_id == id)
     )
-
     
 
     def __repr__(self):
@@ -216,13 +230,4 @@ class Like(db.Model):
         db.ForeignKey('messages.id', ondelete='CASCADE'),
         nullable=False,
     )
-
-
-def connect_db(app):
-    """Connect this database to provided Flask app.
-
-    You should call this in your Flask app.
-    """
-
-    db.app = app
-    db.init_app(app)
+    
